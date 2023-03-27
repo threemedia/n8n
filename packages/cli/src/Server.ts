@@ -156,6 +156,7 @@ import { isVersionControlLicensed } from '@/environments/versionControl/versionC
 import { VersionControlService } from '@/environments/versionControl/versionControl.service.ee';
 import { VersionControlController } from '@/environments/versionControl/versionControl.controller.ee';
 import { VersionControlPreferencesService } from './environments/versionControl/versionControlPreferences.service.ee';
+import { CredentialsHelper } from '@/CredentialsHelper';
 
 const exec = promisify(callbackExec);
 
@@ -442,7 +443,7 @@ export class Server extends AbstractServer {
 		return this.frontendSettings;
 	}
 
-	private registerControllers(ignoredEndpoints: Readonly<string[]>) {
+	private async registerControllers(ignoredEndpoints: Readonly<string[]>) {
 		const { app, externalHooks, activeWorkflowRunner, nodeTypes } = this;
 		const repositories = Db.collections;
 		setupAuthMiddlewares(app, ignoredEndpoints, this.restEndpoint, repositories.User);
@@ -455,13 +456,30 @@ export class Server extends AbstractServer {
 		const versionControlService = Container.get(VersionControlService);
 		const versionControlPreferencesService = Container.get(VersionControlPreferencesService);
 
+		const encryptionKey = await UserSettings.getEncryptionKey();
+		const credentialsHelper = new CredentialsHelper(encryptionKey);
+
 		const controllers: object[] = [
 			new EventBusController(),
 			new AuthController({ config, internalHooks, repositories, logger, postHog }),
 			new OwnerController({ config, internalHooks, repositories, logger }),
 			new MeController({ externalHooks, internalHooks, repositories, logger }),
-			new OAuth1CredentialController(config, logger, externalHooks, repositories.Credentials),
-			new OAuth2CredentialController(config, logger, externalHooks, repositories.Credentials),
+			new OAuth1CredentialController(
+				config,
+				logger,
+				credentialsHelper,
+				externalHooks,
+				repositories.Credentials,
+				repositories.SharedCredentials,
+			),
+			new OAuth2CredentialController(
+				config,
+				logger,
+				credentialsHelper,
+				externalHooks,
+				repositories.Credentials,
+				repositories.SharedCredentials,
+			),
 			new NodeTypesController({ config, nodeTypes }),
 			new PasswordResetController({
 				config,
@@ -586,7 +604,7 @@ export class Server extends AbstractServer {
 
 		await handleLdapInit();
 
-		this.registerControllers(ignoredEndpoints);
+		await this.registerControllers(ignoredEndpoints);
 
 		this.app.use(`/${this.restEndpoint}/credentials`, credentialsController);
 
