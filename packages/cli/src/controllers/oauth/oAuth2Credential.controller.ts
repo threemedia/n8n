@@ -9,17 +9,13 @@ import set from 'lodash/set';
 import split from 'lodash/split';
 import unset from 'lodash/unset';
 import { resolve } from 'path';
-import { Credentials } from 'n8n-core';
-import type { WorkflowExecuteMode } from 'n8n-workflow';
 import { jsonStringify, ILogger } from 'n8n-workflow';
-
-import { RESPONSE_ERROR_MESSAGES, TEMPLATES_DIR } from '@/constants';
+import { TEMPLATES_DIR } from '@/constants';
 import { Config } from '@/config';
 import { Get, RestController } from '@/decorators';
 import type { SharedCredentials } from '@db/entities/SharedCredentials';
 import { CredentialsHelper } from '@/CredentialsHelper';
 import { OAuthRequest } from '@/requests';
-import { BadRequestError, NotFoundError } from '@/ResponseHelper';
 import { IExternalHooksClass } from '@/Interfaces';
 import type { ICredentialsDb } from '@/Interfaces';
 import { AbstractOAuthController } from './abstractOAuth.controller';
@@ -28,13 +24,13 @@ import { AbstractOAuthController } from './abstractOAuth.controller';
 export class OAuth2CredentialController extends AbstractOAuthController {
 	constructor(
 		config: Config,
-		private logger: ILogger,
-		private credentialsHelper: CredentialsHelper,
+		logger: ILogger,
+		credentialsHelper: CredentialsHelper,
 		private externalHooks: IExternalHooksClass,
 		credentialsRepository: Repository<ICredentialsDb>,
 		sharedCredentialsRepository: Repository<SharedCredentials>,
 	) {
-		super(2, config, credentialsRepository, sharedCredentialsRepository);
+		super(2, config, logger, credentialsHelper, credentialsRepository, sharedCredentialsRepository);
 	}
 
 	/**
@@ -42,32 +38,8 @@ export class OAuth2CredentialController extends AbstractOAuthController {
 	 */
 	@Get('/auth')
 	async getAuthUri(req: OAuthRequest.OAuth2Credential.Auth): Promise<string> {
-		const { id: credentialId } = req.query;
-
-		if (!credentialId) {
-			throw new BadRequestError('Required credential ID is missing');
-		}
-
-		const credential = await this.getCredentialForUser(credentialId, req.user);
-
-		if (!credential) {
-			this.logger.error('Failed to authorize OAuth2 due to lack of permissions', {
-				userId: req.user.id,
-				credentialId,
-			});
-			throw new NotFoundError(RESPONSE_ERROR_MESSAGES.NO_CREDENTIAL);
-		}
-
-		const credentialType = credential.type;
-
-		const mode: WorkflowExecuteMode = 'internal';
-		const decryptedDataOriginal = await this.credentialsHelper.getDecrypted(
-			credential,
-			credentialType,
-			mode,
-			this.timezone,
-			true,
-		);
+		const credential = await this.getCredential(req);
+		const decryptedDataOriginal = await this.getDecryptedData(credential);
 
 		// At some point in the past we saved hidden scopes to credentials (but shouldn't)
 		// Delete scope before applying defaults to make sure new scopes are present on reconnect
@@ -75,25 +47,20 @@ export class OAuth2CredentialController extends AbstractOAuthController {
 		const genericOAuth2 = ['oAuth2Api', 'googleOAuth2Api', 'microsoftOAuth2Api'];
 		if (
 			decryptedDataOriginal?.scope &&
-			credentialType.includes('OAuth2') &&
-			!genericOAuth2.includes(credentialType)
+			credential.type.includes('OAuth2') &&
+			!genericOAuth2.includes(credential.type)
 		) {
 			delete decryptedDataOriginal.scope;
 		}
 
-		const oauthCredentials = this.credentialsHelper.applyDefaultsAndOverwrites(
-			decryptedDataOriginal,
-			credentialType,
-			mode,
-			this.timezone,
-		);
+		const oauthCredentials = this.applyDefaultsAndOverwrites(credential, decryptedDataOriginal);
 
 		const token = new Csrf();
 		// Generate a CSRF prevention token and send it as an OAuth2 state string
 		const csrfSecret = token.secretSync();
 		const state = {
 			token: token.create(csrfSecret),
-			cid: req.query.id,
+			cid: credential.id,
 		};
 		const stateEncodedStr = Buffer.from(JSON.stringify(state)).toString('base64');
 
@@ -110,21 +77,6 @@ export class OAuth2CredentialController extends AbstractOAuthController {
 		await this.externalHooks.run('oauth2.authenticate', [oAuthOptions]);
 
 		const oAuthObj = new ClientOAuth2(oAuthOptions);
-
-		// Encrypt the data
-		const credentials = new Credentials(credential, credentialType, credential.nodesAccess);
-		decryptedDataOriginal.csrfSecret = csrfSecret;
-
-		credentials.setData(decryptedDataOriginal, this.credentialsHelper.encryptionKey);
-		const newCredentialsData = credentials.getDataToSave() as unknown as ICredentialsDb;
-
-		// Add special database related data
-		// TODO: set this in getDataToSave
-		newCredentialsData.updatedAt = new Date();
-
-		// Update the credentials in DB
-		await this.credentialsRepository.update(req.query.id, newCredentialsData);
-
 		const authQueryParameters = get(oauthCredentials, 'authQueryParameters', '') as string;
 		let returnUri = oAuthObj.code.getUri();
 
@@ -140,9 +92,11 @@ export class OAuth2CredentialController extends AbstractOAuthController {
 			returnUri += `&${authQueryParameters}`;
 		}
 
+		await this.encryptAndSaveData(credential, decryptedDataOriginal);
+
 		this.logger.verbose('OAuth2 authentication successful for new credential', {
 			userId: req.user.id,
-			credentialId,
+			credentialId: credential.id,
 		});
 
 		return returnUri;
@@ -186,22 +140,8 @@ export class OAuth2CredentialController extends AbstractOAuthController {
 				return this.renderCallbackError(res, errorMessage);
 			}
 
-			const credentialType = credential.type;
-
-			const mode: WorkflowExecuteMode = 'internal';
-			const decryptedDataOriginal = await this.credentialsHelper.getDecrypted(
-				credential,
-				credentialType,
-				mode,
-				this.timezone,
-				true,
-			);
-			const oauthCredentials = this.credentialsHelper.applyDefaultsAndOverwrites(
-				decryptedDataOriginal,
-				credentialType,
-				mode,
-				this.timezone,
-			);
+			const decryptedDataOriginal = await this.getDecryptedData(credential);
+			const oauthCredentials = this.applyDefaultsAndOverwrites(credential, decryptedDataOriginal);
 
 			const token = new Csrf();
 			if (
@@ -211,7 +151,7 @@ export class OAuth2CredentialController extends AbstractOAuthController {
 				const errorMessage = 'The OAuth2 callback state is invalid!';
 				this.logger.debug(errorMessage, {
 					userId: req.user?.id,
-					credentialId: state.cid,
+					credentialId: credential.id,
 				});
 				return this.renderCallbackError(res, errorMessage);
 			}
@@ -258,7 +198,7 @@ export class OAuth2CredentialController extends AbstractOAuthController {
 				const errorMessage = 'Unable to get OAuth2 access tokens!';
 				this.logger.error(errorMessage, {
 					userId: req.user?.id,
-					credentialId: state.cid,
+					credentialId: credential.id,
 				});
 				return this.renderCallbackError(res, errorMessage);
 			}
@@ -275,16 +215,11 @@ export class OAuth2CredentialController extends AbstractOAuthController {
 			// eslint-disable-next-line @typescript-eslint/no-unsafe-call
 			unset(decryptedDataOriginal, 'csrfSecret');
 
-			const credentials = new Credentials(credential, credentialType, credential.nodesAccess);
-			credentials.setData(decryptedDataOriginal, this.credentialsHelper.encryptionKey);
-			const newCredentialsData = credentials.getDataToSave() as unknown as ICredentialsDb;
-			// Add special database related data
-			newCredentialsData.updatedAt = new Date();
-			// Save the credentials in DB
-			await this.credentialsRepository.update(state.cid, newCredentialsData);
+			await this.encryptAndSaveData(credential, decryptedDataOriginal);
+
 			this.logger.verbose('OAuth2 callback successful for new credential', {
 				userId: req.user?.id,
-				credentialId: state.cid,
+				credentialId: credential.id,
 			});
 
 			return res.sendFile(resolve(TEMPLATES_DIR, 'oauth-callback.html'));
