@@ -48,6 +48,8 @@ paths:
     $ref: "./handlers/workflows/spec/paths/workflows.id.activate.yml"
   /workflows/{id}/deactivate:
     $ref: "./handlers/workflows/spec/paths/workflows.id.deactivate.yml"
+  /workflows/{id}/transferOwnership:
+    $ref: "./handlers/workflows/spec/paths/workflows.id.transferOwnership.yml"
   /version-control/pull:
     $ref: "./handlers/versionControl/spec/paths/versionControl.yml"
 components:
