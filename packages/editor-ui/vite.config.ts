@@ -124,6 +124,11 @@ export default mergeConfig(
 				},
 			},
 		},
+		server: {
+			fs: {
+				allow: [path.join(__dirname, '..')],
+			},
+		},
 	}),
 	defineVitestConfig({
 		test: {

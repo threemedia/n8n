@@ -44,6 +44,9 @@ importers:
         specifier: workspace:*
         version: link:packages/cli
     devDependencies:
+      '@cypress/vue2':
+        specifier: ^2.0.1
+        version: 2.0.1(cypress@12.8.1)(vue@2.7.14)
       '@n8n_io/eslint-config':
         specifier: workspace:*
         version: link:packages/@n8n_io/eslint-config
@@ -4201,6 +4204,17 @@ packages:
       tough-cookie: 2.5.0
       tunnel-agent: 0.6.0
       uuid: 8.3.2
+    dev: true
+
+  /@cypress/vue2@2.0.1(cypress@12.8.1)(vue@2.7.14):
+    resolution: {integrity: sha512-pW0HFZxMm16UG3flZwUED357HlaRo1MgsHNE3rFs2cgdWFBunTcSbubYjrUFmeoRwEc//u6W0Hm77sOYSf7CLw==}
+    engines: {node: '>=8'}
+    peerDependencies:
+      cypress: '>=4.5.0'
+      vue: ^2.0.0
+    dependencies:
+      cypress: 12.8.1
+      vue: 2.7.14
     dev: true
 
   /@cypress/xvfb@1.2.4(supports-color@8.1.1):
