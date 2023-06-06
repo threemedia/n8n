@@ -202,6 +202,9 @@ export class Server extends AbstractServer {
 		this.app.set('view engine', 'handlebars');
 		this.app.set('views', TEMPLATES_DIR);
 
+		this.testWebhooksEnabled = true;
+		this.webhooksEnabled = config.getEnv('endpoints.disableProductionWebhooksOnMainProcess');
+
 		const urlBaseWebhook = WebhookHelpers.getWebhookBaseUrl();
 		const telemetrySettings: ITelemetrySettings = {
 			enabled: config.getEnv('diagnostics.enabled'),
@@ -539,8 +542,6 @@ export class Server extends AbstractServer {
 			'healthz',
 			'metrics',
 			'e2e',
-			this.endpointWebhook,
-			this.endpointWebhookTest,
 			this.endpointPresetCredentials,
 			isApiEnabled() ? '' : publicApiEndpoint,
 			...excludeEndpoints.split(':'),
@@ -1400,17 +1401,6 @@ export class Server extends AbstractServer {
 		if (!eventBus.isInitialized) {
 			await eventBus.initialize();
 		}
-
-		// ----------------------------------------
-		// Webhooks
-		// ----------------------------------------
-
-		if (!config.getEnv('endpoints.disableProductionWebhooksOnMainProcess')) {
-			this.setupWebhookEndpoint();
-			this.setupWaitingWebhookEndpoint();
-		}
-
-		this.setupTestWebhookEndpoint();
 
 		if (this.endpointPresetCredentials !== '') {
 			// POST endpoint to set preset credentials
