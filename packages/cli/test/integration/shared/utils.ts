@@ -63,7 +63,7 @@ import {
 	PasswordResetController,
 	UsersController,
 } from '@/controllers';
-import { setupAuthMiddlewares } from '@/middlewares';
+import { setupPreAuthMiddlewares, setupPostAuthMiddlewares } from '@/middlewares';
 import * as testDb from '../shared/testDb';
 
 import { v4 as uuid } from 'uuid';
@@ -126,12 +126,7 @@ export async function initTestServer({
 	config.set('userManagement.isInstanceOwnerSetUp', false);
 
 	if (applyAuth) {
-		setupAuthMiddlewares(
-			testServer.app,
-			AUTHLESS_ENDPOINTS,
-			REST_PATH_SEGMENT,
-			Db.collections.User,
-		);
+		setupPreAuthMiddlewares(testServer.app);
 	}
 
 	if (!endpointGroups) return testServer.app;
@@ -266,6 +261,10 @@ export async function initTestServer({
 					);
 			}
 		}
+	}
+
+	if (applyAuth) {
+		setupPostAuthMiddlewares(testServer.app, AUTHLESS_ENDPOINTS, REST_PATH_SEGMENT);
 	}
 
 	return testServer.app;

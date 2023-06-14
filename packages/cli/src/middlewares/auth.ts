@@ -10,7 +10,6 @@ import type { AuthenticatedRequest } from '@/requests';
 import config from '@/config';
 import { AUTH_COOKIE_NAME, EDITOR_UI_DIST_DIR } from '@/constants';
 import { issueCookie, resolveJwtContent } from '@/auth/jwt';
-import { canSkipAuth } from '@/decorators/registerController';
 
 const jwtFromRequest = (req: Request) => {
 	// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -70,25 +69,26 @@ const isAuthExcluded = (url: string, ignoredEndpoints: Readonly<string[]>): bool
 		.filter(Boolean) // skip empty paths
 		.find((ignoredEndpoint) => url.startsWith(`/${ignoredEndpoint}`));
 
+export const setupPreAuthMiddlewares = (app: Application) => {
+	// needed for testing; not adding overhead since it directly returns if req.cookies exists
+	app.use(cookieParser());
+	app.use(userManagementJwtAuth());
+};
+
 /**
  * This sets up the auth middlewares in the correct order
  */
-export const setupAuthMiddlewares = (
+export const setupPostAuthMiddlewares = (
 	app: Application,
 	ignoredEndpoints: Readonly<string[]>,
 	restEndpoint: string,
 ) => {
-	// needed for testing; not adding overhead since it directly returns if req.cookies exists
-	app.use(cookieParser());
-	app.use(userManagementJwtAuth());
-
 	app.use(async (req: Request, res: Response, next: NextFunction) => {
 		if (
 			// TODO: refactor me!!!
 			// skip authentication for preflight requests
 			req.method === 'OPTIONS' ||
 			staticAssets.includes(req.url.slice(1)) ||
-			canSkipAuth(req.method, req.path) ||
 			isAuthExcluded(req.url, ignoredEndpoints) ||
 			req.url.startsWith(`/${restEndpoint}/settings`) ||
 			isPostUsersId(req, restEndpoint) ||

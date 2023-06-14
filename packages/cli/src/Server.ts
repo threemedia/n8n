@@ -136,7 +136,7 @@ import { EventBusController } from '@/eventbus/eventBus.controller';
 import { isLogStreamingEnabled } from '@/eventbus/MessageEventBus/MessageEventBusHelper';
 import { licenseController } from './license/license.controller';
 import { Push, setupPushServer, setupPushHandler } from '@/push';
-import { setupAuthMiddlewares } from './middlewares';
+import { setupPreAuthMiddlewares, setupPostAuthMiddlewares } from './middlewares';
 import { initEvents } from './events';
 import {
 	getLdapLoginLabel,
@@ -443,10 +443,9 @@ export class Server extends AbstractServer {
 		return this.frontendSettings;
 	}
 
-	private async registerControllers(ignoredEndpoints: Readonly<string[]>) {
+	private async registerControllers() {
 		const { app, externalHooks, activeWorkflowRunner, nodeTypes } = this;
 		const repositories = Db.collections;
-		setupAuthMiddlewares(app, ignoredEndpoints, this.restEndpoint);
 
 		const logger = LoggerProxy;
 		const internalHooks = Container.get(InternalHooks);
@@ -578,7 +577,11 @@ export class Server extends AbstractServer {
 
 		await handleLdapInit();
 
-		await this.registerControllers(ignoredEndpoints);
+		setupPreAuthMiddlewares(app);
+
+		await this.registerControllers();
+
+		setupPostAuthMiddlewares(app, ignoredEndpoints, restEndpoint);
 
 		this.app.use(`/${this.restEndpoint}/credentials`, credentialsController);
 

@@ -96,7 +96,7 @@ export class License {
 		await this.manager.renew();
 	}
 
-	isFeatureEnabled(feature: string): boolean {
+	isFeatureEnabled(feature: LICENSE_FEATURES): boolean {
 		if (!this.manager) {
 			getLogger().warn('License manager not initialized');
 			return false;

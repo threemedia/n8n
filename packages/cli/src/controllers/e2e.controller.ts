@@ -16,17 +16,6 @@ if (!inE2ETests) {
 	process.exit(1);
 }
 
-const enabledFeatures = {
-	[LICENSE_FEATURES.SHARING]: true, //default to true here instead of setting it in config/index.ts for e2e
-	[LICENSE_FEATURES.LDAP]: false,
-	[LICENSE_FEATURES.SAML]: false,
-	[LICENSE_FEATURES.LOG_STREAMING]: false,
-	[LICENSE_FEATURES.ADVANCED_EXECUTION_FILTERS]: false,
-	[LICENSE_FEATURES.VERSION_CONTROL]: false,
-};
-
-type Feature = keyof typeof enabledFeatures;
-
 const tablesToTruncate = [
 	'auth_identity',
 	'auth_provider_sync_history',
@@ -61,31 +50,48 @@ type ResetRequest = Request<
 @NoAuthRequired()
 @RestController('/e2e')
 export class E2EController {
+	private enabledFeatures: Record<LICENSE_FEATURES, boolean> = {
+		[LICENSE_FEATURES.SHARING]: false,
+		[LICENSE_FEATURES.LDAP]: false,
+		[LICENSE_FEATURES.SAML]: false,
+		[LICENSE_FEATURES.LOG_STREAMING]: false,
+		[LICENSE_FEATURES.ADVANCED_EXECUTION_FILTERS]: false,
+		[LICENSE_FEATURES.VERSION_CONTROL]: false,
+		[LICENSE_FEATURES.VARIABLES]: false,
+		[LICENSE_FEATURES.API_DISABLED]: false,
+	};
+
 	constructor(
 		license: License,
 		private roleRepo: RoleRepository,
 		private settingsRepo: SettingsRepository,
 		private userRepo: UserRepository,
 	) {
-		license.isFeatureEnabled = (feature: Feature) => enabledFeatures[feature] ?? false;
+		license.isFeatureEnabled = (feature: LICENSE_FEATURES) =>
+			this.enabledFeatures[feature] ?? false;
 	}
 
 	@Post('/reset')
 	async reset(req: ResetRequest) {
+		this.resetFeatures();
 		await this.resetLogStreaming();
 		await this.truncateAll();
 		await this.setupUserManagement(req.body.owner, req.body.members);
 	}
 
 	@Patch('/feature/:feature')
-	setFeature(req: Request<{ feature: Feature }, {}, { enabled: boolean }>) {
-		const { feature } = req.params;
-		const { enabled } = req.body;
-		enabledFeatures[feature] = enabled;
+	setFeature(req: Request<{ feature: LICENSE_FEATURES }, {}, { enabled: boolean }>) {
+		this.enabledFeatures[req.params.feature] = req.body.enabled;
+	}
+
+	private resetFeatures() {
+		for (const feature of Object.keys(this.enabledFeatures)) {
+			this.enabledFeatures[feature as LICENSE_FEATURES] = false;
+		}
 	}
 
 	private async resetLogStreaming() {
-		enabledFeatures[LICENSE_FEATURES.LOG_STREAMING] = false;
+		this.enabledFeatures[LICENSE_FEATURES.LOG_STREAMING] = false;
 		for (const id in eventBus.destinations) {
 			await eventBus.removeDestination(id);
 		}
