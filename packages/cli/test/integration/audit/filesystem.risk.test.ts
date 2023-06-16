@@ -2,7 +2,7 @@ import { v4 as uuid } from 'uuid';
 import * as Db from '@/Db';
 import { audit } from '@/audit';
 import { FILESYSTEM_INTERACTION_NODE_TYPES, FILESYSTEM_REPORT } from '@/audit/constants';
-import { getRiskSection, saveManualTriggerWorkflow } from './utils';
+import { createNode, createWorkflow, getRiskSection, saveManualTriggerWorkflow } from './utils';
 import * as testDb from '../shared/testDb';
 
 beforeAll(async () => {
@@ -26,21 +26,7 @@ test('should report filesystem interaction nodes', async () => {
 	);
 
 	const promises = Object.entries(map).map(async ([nodeType, nodeId]) => {
-		const details = {
-			name: 'My Test Workflow',
-			active: false,
-			connections: {},
-			nodeTypes: {},
-			nodes: [
-				{
-					id: nodeId,
-					name: 'My Node',
-					type: nodeType,
-					typeVersion: 1,
-					position: [0, 0] as [number, number],
-				},
-			],
-		};
+		const details = createWorkflow([createNode(nodeType, 'MyNode', nodeId)]);
 
 		return Db.collections.Workflow.save(details);
 	});

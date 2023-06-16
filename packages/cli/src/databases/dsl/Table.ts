@@ -3,8 +3,8 @@ import { TableColumn, Table } from 'typeorm';
 import { LazyPromise } from 'n8n-workflow';
 import { Column } from './Column';
 
-abstract class TableOperation extends LazyPromise<void> {
-	abstract execute(queryRunner: QueryRunner): Promise<void>;
+abstract class TableOperation<R = void> extends LazyPromise<R> {
+	abstract execute(queryRunner: QueryRunner): Promise<R>;
 
 	constructor(protected tableName: string, protected prefix: string, queryRunner: QueryRunner) {
 		super((resolve) => {
@@ -110,5 +110,48 @@ export class DropColumns extends TableOperation {
 	async execute(queryRunner: QueryRunner) {
 		const { tableName, prefix, columnNames } = this;
 		return queryRunner.dropColumns(`${prefix}${tableName}`, columnNames);
+	}
+}
+
+export class InsertInto<T> extends TableOperation<number[]> {
+	constructor(
+		tableName: string,
+		protected values: T[],
+		protected returnIds: boolean,
+		prefix: string,
+		queryRunner: QueryRunner,
+	) {
+		super(tableName, prefix, queryRunner);
+	}
+
+	async execute(queryRunner: QueryRunner) {
+		const { tableName, prefix, values, returnIds } = this;
+		// TODO: use INSERT query instead of QueryBuilder
+		// const query = `INSERT INTO ${prefix}${tableName} `
+		let qb = queryRunner.manager
+			.createQueryBuilder()
+			.insert()
+			.into(`${prefix}${tableName}`)
+			.values(values);
+		if (returnIds) qb = qb.returning(['id']);
+		return qb.execute().then(({ identifiers }) => {
+			return returnIds ? (identifiers as Array<{ id: number }>).map(({ id }) => id) : [];
+		});
+	}
+}
+
+class MockEntity {
+	id: string;
+}
+
+export class FetchIds extends TableOperation<string[]> {
+	async execute(queryRunner: QueryRunner) {
+		const { tableName, prefix } = this;
+		// TODO: use SELECT query instead of QueryBuilder
+		return queryRunner.manager
+			.createQueryBuilder(MockEntity, `${prefix}${tableName}`)
+			.select('id')
+			.getMany()
+			.then((result) => result.map(({ id }) => id));
 	}
 }

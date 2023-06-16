@@ -22,6 +22,7 @@ export class CreateIndex extends IndexOperation {
 		name: string,
 		tableName: string,
 		protected columnNames: string[],
+		protected isUnique: boolean,
 		prefix: string,
 		queryRunner: QueryRunner,
 	) {
@@ -29,10 +30,10 @@ export class CreateIndex extends IndexOperation {
 	}
 
 	async execute(queryRunner: QueryRunner) {
-		const { tableName, name, columnNames, prefix } = this;
+		const { tableName, name, columnNames, prefix, isUnique } = this;
 		return queryRunner.createIndex(
 			`${prefix}${tableName}`,
-			new TableIndex({ name: `IDX_${prefix}${name}`, columnNames }),
+			new TableIndex({ name: `IDX_${prefix}${name}`, columnNames, isUnique }),
 		);
 	}
 }
