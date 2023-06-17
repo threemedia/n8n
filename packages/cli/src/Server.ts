@@ -96,10 +96,10 @@ import {
 	TagsController,
 	TranslationController,
 	UsersController,
+	WorkflowStatisticsController,
 } from '@/controllers';
 
 import { executionsController } from '@/executions/executions.controller';
-import { workflowStatsController } from '@/api/workflowStats.api';
 import { isApiEnabled, loadPublicApiVersions } from '@/PublicApi';
 import {
 	getInstanceBaseUrl,
@@ -137,7 +137,6 @@ import { isLogStreamingEnabled } from '@/eventbus/MessageEventBus/MessageEventBu
 import { licenseController } from './license/license.controller';
 import { Push, setupPushServer, setupPushHandler } from '@/push';
 import { setupAuthMiddlewares } from './middlewares';
-import { initEvents } from './events';
 import {
 	getLdapLoginLabel,
 	handleLdapInit,
@@ -390,9 +389,6 @@ export class Server extends AbstractServer {
 			saml_enabled: isSamlCurrentAuthenticationMethod(),
 		};
 
-		// Set up event handling
-		initEvents();
-
 		if (inDevelopment && process.env.N8N_DEV_RELOAD === 'true') {
 			const { reloadNodesAndCredentials } = await import('@/ReloadNodesAndCredentials');
 			await reloadNodesAndCredentials(this.loadNodesAndCredentials, this.nodeTypes, this.push);
@@ -498,6 +494,7 @@ export class Server extends AbstractServer {
 			}),
 			new SamlController(samlService),
 			new VersionControlController(versionControlService, versionControlPreferencesService),
+			Container.get(WorkflowStatisticsController),
 		];
 
 		if (isLdapEnabled()) {
@@ -612,11 +609,6 @@ export class Server extends AbstractServer {
 		// License
 		// ----------------------------------------
 		this.app.use(`/${this.restEndpoint}/license`, licenseController);
-
-		// ----------------------------------------
-		// Workflow Statistics
-		// ----------------------------------------
-		this.app.use(`/${this.restEndpoint}/workflow-stats`, workflowStatsController);
 
 		// ----------------------------------------
 		// SAML
