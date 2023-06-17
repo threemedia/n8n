@@ -1,21 +1,7 @@
 import { Service } from 'typedi';
+import { writeFileSync } from 'fs';
 import path from 'path';
-import * as Db from '@/Db';
-import { versionControlFoldersExistCheck } from './versionControlHelper.ee';
-import type { VersionControlPreferences } from './types/versionControlPreferences';
-import {
-	VERSION_CONTROL_CREDENTIAL_EXPORT_FOLDER,
-	VERSION_CONTROL_GIT_FOLDER,
-	VERSION_CONTROL_README,
-	VERSION_CONTROL_SSH_FOLDER,
-	VERSION_CONTROL_SSH_KEY_NAME,
-	VERSION_CONTROL_TAGS_EXPORT_FILE,
-	VERSION_CONTROL_VARIABLES_EXPORT_FILE,
-	VERSION_CONTROL_WORKFLOW_EXPORT_FOLDER,
-} from './constants';
 import { LoggerProxy } from 'n8n-workflow';
-import { VersionControlGitService } from './versionControlGit.service.ee';
-import { UserSettings } from 'n8n-core';
 import type {
 	CommitResult,
 	DiffResult,
@@ -24,12 +10,25 @@ import type {
 	PushResult,
 	StatusResult,
 } from 'simple-git';
+
+import { CredentialsRepository, WorkflowRepository } from '@/databases/repositories';
+import { BadRequestError } from '@/ResponseHelper';
+
+import { versionControlFoldersExistCheck } from './versionControlHelper.ee';
+import type { VersionControlPreferences } from './types/versionControlPreferences';
+import {
+	VERSION_CONTROL_CREDENTIAL_EXPORT_FOLDER,
+	VERSION_CONTROL_README,
+	VERSION_CONTROL_TAGS_EXPORT_FILE,
+	VERSION_CONTROL_VARIABLES_EXPORT_FILE,
+	VERSION_CONTROL_WORKFLOW_EXPORT_FOLDER,
+} from './constants';
+import { VersionControlGitService } from './versionControlGit.service.ee';
 import type { ExportResult } from './types/exportResult';
 import { VersionControlExportService } from './versionControlExport.service.ee';
-import { BadRequestError } from '../../ResponseHelper';
 import type { ImportResult } from './types/importResult';
 import type { VersionControlPushWorkFolder } from './types/versionControlPushWorkFolder';
-import type { VersionControllPullOptions } from './types/versionControlPullWorkFolder';
+import type { VersionControlPullOptions } from './types/versionControlPullWorkFolder';
 import type {
 	VersionControlledFileLocation,
 	VersionControlledFile,
@@ -37,35 +36,27 @@ import type {
 	VersionControlledFileType,
 } from './types/versionControlledFile';
 import { VersionControlPreferencesService } from './versionControlPreferences.service.ee';
-import { writeFileSync } from 'fs';
+
 @Service()
 export class VersionControlService {
-	private sshKeyName: string;
-
-	private sshFolder: string;
-
-	private gitFolder: string;
-
 	constructor(
-		private gitService: VersionControlGitService,
-		private versionControlPreferencesService: VersionControlPreferencesService,
-		private versionControlExportService: VersionControlExportService,
-	) {
-		const userFolder = UserSettings.getUserN8nFolderPath();
-		this.sshFolder = path.join(userFolder, VERSION_CONTROL_SSH_FOLDER);
-		this.gitFolder = path.join(userFolder, VERSION_CONTROL_GIT_FOLDER);
-		this.sshKeyName = path.join(this.sshFolder, VERSION_CONTROL_SSH_KEY_NAME);
-	}
+		private readonly workflowRepository: WorkflowRepository,
+		private readonly credentialsRepository: CredentialsRepository,
+		private readonly gitService: VersionControlGitService,
+		private readonly versionControlPreferencesService: VersionControlPreferencesService,
+		private readonly versionControlExportService: VersionControlExportService,
+	) {}
 
 	async init(): Promise<void> {
 		this.gitService.resetService();
-		versionControlFoldersExistCheck([this.gitFolder, this.sshFolder]);
+		const { sshKeyName, sshFolder, gitFolder } = this.versionControlPreferencesService;
+		versionControlFoldersExistCheck([gitFolder, sshFolder]);
 		await this.versionControlPreferencesService.loadFromDbAndApplyVersionControlPreferences();
 		await this.gitService.initService({
 			versionControlPreferences: this.versionControlPreferencesService.getPreferences(),
-			gitFolder: this.gitFolder,
-			sshKeyName: this.sshKeyName,
-			sshFolder: this.sshFolder,
+			sshKeyName,
+			sshFolder,
+			gitFolder,
 		});
 	}
 
@@ -108,7 +99,10 @@ export class VersionControlService {
 		} else {
 			if (getBranchesResult.branches?.length === 0) {
 				try {
-					writeFileSync(path.join(this.gitFolder, '/README.md'), VERSION_CONTROL_README);
+					writeFileSync(
+						path.join(this.versionControlPreferencesService.gitFolder, '/README.md'),
+						VERSION_CONTROL_README,
+					);
 
 					await this.gitService.stage(new Set<string>(['README.md']));
 					await this.gitService.commit('Initial commit');
@@ -155,7 +149,7 @@ export class VersionControlService {
 		return result;
 	}
 
-	async import(options: VersionControllPullOptions): Promise<ImportResult | undefined> {
+	async import(options: VersionControlPullOptions): Promise<ImportResult | undefined> {
 		try {
 			return await this.versionControlExportService.importFromWorkFolder(options);
 		} catch (error) {
@@ -179,7 +173,7 @@ export class VersionControlService {
 
 	// will reset the branch to the remote branch and pull
 	// this will discard all local changes
-	async resetWorkfolder(options: VersionControllPullOptions): Promise<ImportResult | undefined> {
+	async resetWorkfolder(options: VersionControlPullOptions): Promise<ImportResult | undefined> {
 		const currentBranch = await this.gitService.getCurrentBranch();
 		await this.versionControlExportService.cleanWorkFolder();
 		await this.gitService.resetBranch({
@@ -217,7 +211,7 @@ export class VersionControlService {
 	}
 
 	async pullWorkfolder(
-		options: VersionControllPullOptions,
+		options: VersionControlPullOptions,
 	): Promise<ImportResult | StatusResult | undefined> {
 		await this.resetWorkfolder({
 			importAfterPull: false,
@@ -308,7 +302,7 @@ export class VersionControlService {
 					.replace(/[\/,\\]/, '')
 					.replace('.json', '');
 				if (location === 'remote') {
-					const existingWorkflow = await Db.collections.Workflow.find({
+					const existingWorkflow = await this.workflowRepository.find({
 						where: { id },
 					});
 					if (existingWorkflow?.length > 0) {
@@ -341,7 +335,7 @@ export class VersionControlService {
 					.replace(/[\/,\\]/, '')
 					.replace('.json', '');
 				if (location === 'remote') {
-					const existingCredential = await Db.collections.Credentials.find({
+					const existingCredential = await this.credentialsRepository.find({
 						where: { id },
 					});
 					if (existingCredential?.length > 0) {

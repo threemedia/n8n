@@ -1,36 +1,38 @@
 import { Service } from 'typedi';
-import { VersionControlPreferences } from './types/versionControlPreferences';
-import type { ValidationError } from 'class-validator';
-import { validate } from 'class-validator';
 import { readFileSync as fsReadFileSync, existsSync as fsExistsSync } from 'fs';
 import { writeFile as fsWriteFile, rm as fsRm } from 'fs/promises';
+import path from 'path';
+import type { ValidationError } from 'class-validator';
+import { validate } from 'class-validator';
+
+import { UserSettings } from 'n8n-core';
+import { LoggerProxy, jsonParse } from 'n8n-workflow';
+
 import {
 	generateSshKeyPair,
 	isVersionControlLicensed,
 	versionControlFoldersExistCheck,
 } from './versionControlHelper.ee';
-import { UserSettings } from 'n8n-core';
-import { LoggerProxy, jsonParse } from 'n8n-workflow';
-import * as Db from '@/Db';
+import { VersionControlPreferences } from './types/versionControlPreferences';
 import {
 	VERSION_CONTROL_SSH_FOLDER,
 	VERSION_CONTROL_GIT_FOLDER,
 	VERSION_CONTROL_SSH_KEY_NAME,
 	VERSION_CONTROL_PREFERENCES_DB_KEY,
 } from './constants';
-import path from 'path';
+import { SettingsRepository } from '@/databases/repositories';
 
 @Service()
 export class VersionControlPreferencesService {
 	private _versionControlPreferences: VersionControlPreferences = new VersionControlPreferences();
 
-	private sshKeyName: string;
+	readonly sshKeyName: string;
 
-	private sshFolder: string;
+	readonly sshFolder: string;
 
-	private gitFolder: string;
+	readonly gitFolder: string;
 
-	constructor() {
+	constructor(private readonly settingsRepository: SettingsRepository) {
 		const userFolder = UserSettings.getUserN8nFolderPath();
 		this.sshFolder = path.join(userFolder, VERSION_CONTROL_SSH_FOLDER);
 		this.gitFolder = path.join(userFolder, VERSION_CONTROL_GIT_FOLDER);
@@ -144,7 +146,7 @@ export class VersionControlPreferencesService {
 		if (saveToDb) {
 			const settingsValue = JSON.stringify(this._versionControlPreferences);
 			try {
-				await Db.collections.Settings.save({
+				await this.settingsRepository.save({
 					key: VERSION_CONTROL_PREFERENCES_DB_KEY,
 					value: settingsValue,
 					loadOnStartup: true,
@@ -159,7 +161,7 @@ export class VersionControlPreferencesService {
 	async loadFromDbAndApplyVersionControlPreferences(): Promise<
 		VersionControlPreferences | undefined
 	> {
-		const loadedPreferences = await Db.collections.Settings.findOne({
+		const loadedPreferences = await this.settingsRepository.findOne({
 			where: { key: VERSION_CONTROL_PREFERENCES_DB_KEY },
 		});
 		if (loadedPreferences) {

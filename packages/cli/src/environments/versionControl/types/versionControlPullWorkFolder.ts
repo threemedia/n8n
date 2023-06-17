@@ -18,7 +18,7 @@ export class VersionControlPullWorkFolder {
 	variables?: { [key: string]: string };
 }
 
-export class VersionControllPullOptions {
+export class VersionControlPullOptions {
 	userId: string;
 
 	force?: boolean;

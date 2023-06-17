@@ -1,18 +1,20 @@
-import Container, { Service } from 'typedi';
+import { Container, Service } from 'typedi';
+import { In } from 'typeorm';
 import path from 'path';
+import glob from 'fast-glob';
+import { writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from 'fs/promises';
+import without from 'lodash/without';
+import type { ICredentialDataDecryptedObject } from 'n8n-workflow';
+import { LoggerProxy, jsonParse } from 'n8n-workflow';
+
+import config from '@/config';
+import * as Db from '@/Db';
 import {
 	VERSION_CONTROL_CREDENTIAL_EXPORT_FOLDER,
-	VERSION_CONTROL_GIT_FOLDER,
 	VERSION_CONTROL_TAGS_EXPORT_FILE,
 	VERSION_CONTROL_VARIABLES_EXPORT_FILE,
 	VERSION_CONTROL_WORKFLOW_EXPORT_FOLDER,
 } from './constants';
-import * as Db from '@/Db';
-import glob from 'fast-glob';
-import type { ICredentialDataDecryptedObject } from 'n8n-workflow';
-import { LoggerProxy, jsonParse } from 'n8n-workflow';
-import { writeFile as fsWriteFile, readFile as fsReadFile, rm as fsRm } from 'fs/promises';
-import { VersionControlGitService } from './versionControlGit.service.ee';
 import { Credentials, UserSettings } from 'n8n-core';
 import type { IWorkflowToImport } from '@/Interfaces';
 import type { ExportableWorkflow } from './types/exportableWorkflow';
@@ -23,31 +25,28 @@ import { CredentialsEntity } from '@/databases/entities/CredentialsEntity';
 import { Variables } from '@/databases/entities/Variables';
 import type { ImportResult } from './types/importResult';
 import { UM_FIX_INSTRUCTION } from '@/commands/BaseCommand';
-import config from '@/config';
 import { SharedCredentials } from '@/databases/entities/SharedCredentials';
 import { WorkflowEntity } from '@/databases/entities/WorkflowEntity';
 import { WorkflowTagMapping } from '@/databases/entities/WorkflowTagMapping';
 import { TagEntity } from '@/databases/entities/TagEntity';
 import { ActiveWorkflowRunner } from '../../ActiveWorkflowRunner';
-import without from 'lodash/without';
-import type { VersionControllPullOptions } from './types/versionControlPullWorkFolder';
+import type { VersionControlPullOptions } from './types/versionControlPullWorkFolder';
 import { versionControlFoldersExistCheck } from './versionControlHelper.ee';
-import { In } from 'typeorm';
+import { VersionControlPreferencesService } from './versionControlPreferences.service.ee';
 
 @Service()
 export class VersionControlExportService {
-	private gitFolder: string;
-
 	private workflowExportFolder: string;
 
 	private credentialExportFolder: string;
 
-	constructor(private gitService: VersionControlGitService) {
-		const userFolder = UserSettings.getUserN8nFolderPath();
-		this.gitFolder = path.join(userFolder, VERSION_CONTROL_GIT_FOLDER);
-		this.workflowExportFolder = path.join(this.gitFolder, VERSION_CONTROL_WORKFLOW_EXPORT_FOLDER);
+	constructor(private versionControlPreferencesService: VersionControlPreferencesService) {
+		this.workflowExportFolder = path.join(
+			this.versionControlPreferencesService.gitFolder,
+			VERSION_CONTROL_WORKFLOW_EXPORT_FOLDER,
+		);
 		this.credentialExportFolder = path.join(
-			this.gitFolder,
+			this.versionControlPreferencesService.gitFolder,
 			VERSION_CONTROL_CREDENTIAL_EXPORT_FOLDER,
 		);
 	}
@@ -61,16 +60,22 @@ export class VersionControlExportService {
 	}
 
 	getTagsPath(): string {
-		return path.join(this.gitFolder, VERSION_CONTROL_TAGS_EXPORT_FILE);
+		return path.join(
+			this.versionControlPreferencesService.gitFolder,
+			VERSION_CONTROL_TAGS_EXPORT_FILE,
+		);
 	}
 
 	getVariablesPath(): string {
-		return path.join(this.gitFolder, VERSION_CONTROL_VARIABLES_EXPORT_FILE);
+		return path.join(
+			this.versionControlPreferencesService.gitFolder,
+			VERSION_CONTROL_VARIABLES_EXPORT_FILE,
+		);
 	}
 
 	async getWorkflowFromFile(
 		filePath: string,
-		root = this.gitFolder,
+		root = this.versionControlPreferencesService.gitFolder,
 	): Promise<IWorkflowToImport | undefined> {
 		try {
 			const importedWorkflow = jsonParse<IWorkflowToImport>(
@@ -84,7 +89,7 @@ export class VersionControlExportService {
 
 	async getCredentialFromFile(
 		filePath: string,
-		root = this.gitFolder,
+		root = this.versionControlPreferencesService.gitFolder,
 	): Promise<ExportableCredential | undefined> {
 		try {
 			const credential = jsonParse<ExportableCredential>(
@@ -143,11 +148,11 @@ export class VersionControlExportService {
 				absolute: true,
 			});
 			const variablesFile = await glob(VERSION_CONTROL_VARIABLES_EXPORT_FILE, {
-				cwd: this.gitFolder,
+				cwd: this.versionControlPreferencesService.gitFolder,
 				absolute: true,
 			});
 			const tagsFile = await glob(VERSION_CONTROL_TAGS_EXPORT_FILE, {
-				cwd: this.gitFolder,
+				cwd: this.versionControlPreferencesService.gitFolder,
 				absolute: true,
 			});
 			await Promise.all(tagsFile.map(async (e) => fsRm(e)));
@@ -162,7 +167,7 @@ export class VersionControlExportService {
 
 	async deleteRepositoryFolder() {
 		try {
-			await fsRm(this.gitFolder, { recursive: true });
+			await fsRm(this.versionControlPreferencesService.gitFolder, { recursive: true });
 		} catch (error) {
 			LoggerProxy.error(`Failed to delete work folder: ${(error as Error).message}`);
 		}
@@ -252,13 +257,13 @@ export class VersionControlExportService {
 
 	async exportVariablesToWorkFolder(): Promise<ExportResult> {
 		try {
-			versionControlFoldersExistCheck([this.gitFolder]);
+			versionControlFoldersExistCheck([this.versionControlPreferencesService.gitFolder]);
 			const variables = await Db.collections.Variables.find();
 			// do not export empty variables
 			if (variables.length === 0) {
 				return {
 					count: 0,
-					folder: this.gitFolder,
+					folder: this.versionControlPreferencesService.gitFolder,
 					files: [],
 				};
 			}
@@ -267,7 +272,7 @@ export class VersionControlExportService {
 			await fsWriteFile(fileName, JSON.stringify(sanitizedVariables, null, 2));
 			return {
 				count: sanitizedVariables.length,
-				folder: this.gitFolder,
+				folder: this.versionControlPreferencesService.gitFolder,
 				files: [
 					{
 						id: '',
@@ -282,7 +287,7 @@ export class VersionControlExportService {
 
 	async exportTagsToWorkFolder(): Promise<ExportResult> {
 		try {
-			versionControlFoldersExistCheck([this.gitFolder]);
+			versionControlFoldersExistCheck([this.versionControlPreferencesService.gitFolder]);
 			const tags = await Db.collections.Tag.find();
 			const mappings = await Db.collections.WorkflowTagMapping.find();
 			const fileName = this.getTagsPath();
@@ -299,7 +304,7 @@ export class VersionControlExportService {
 			);
 			return {
 				count: tags.length,
-				folder: this.gitFolder,
+				folder: this.versionControlPreferencesService.gitFolder,
 				files: [
 					{
 						id: '',
@@ -450,7 +455,7 @@ export class VersionControlExportService {
 		[key: string]: string;
 	}): Promise<{ added: string[]; changed: string[] }> {
 		const variablesFile = await glob(VERSION_CONTROL_VARIABLES_EXPORT_FILE, {
-			cwd: this.gitFolder,
+			cwd: this.versionControlPreferencesService.gitFolder,
 			absolute: true,
 		});
 		if (variablesFile.length > 0) {
@@ -506,7 +511,7 @@ export class VersionControlExportService {
 
 	private async importTagsFromFile() {
 		const tagsFile = await glob(VERSION_CONTROL_TAGS_EXPORT_FILE, {
-			cwd: this.gitFolder,
+			cwd: this.versionControlPreferencesService.gitFolder,
 			absolute: true,
 		});
 		if (tagsFile.length > 0) {
@@ -654,7 +659,7 @@ export class VersionControlExportService {
 		return importWorkflowsResult;
 	}
 
-	async importFromWorkFolder(options: VersionControllPullOptions): Promise<ImportResult> {
+	async importFromWorkFolder(options: VersionControlPullOptions): Promise<ImportResult> {
 		try {
 			const importedVariables = await this.importVariablesFromFile(options.variables);
 			const importedCredentials = await this.importCredentialsFromFiles(options.userId);

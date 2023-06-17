@@ -31,6 +31,7 @@ import {
 import PCancelable from 'p-cancelable';
 import { join as pathJoin } from 'path';
 import { fork } from 'child_process';
+import { Container } from 'typedi';
 
 import { ActiveExecutions } from '@/ActiveExecutions';
 import config from '@/config';
@@ -51,12 +52,11 @@ import * as WorkflowHelpers from '@/WorkflowHelpers';
 import * as WorkflowExecuteAdditionalData from '@/WorkflowExecuteAdditionalData';
 import { generateFailedExecutionFromError } from '@/WorkflowHelpers';
 import { initErrorHandling } from '@/ErrorReporting';
-import { PermissionChecker } from '@/UserManagement/PermissionChecker';
 import { Push } from '@/push';
 import { eventBus } from './eventbus';
 import { recoverExecutionDataFromEventLogMessages } from './eventbus/MessageEventBus/recoverEvents';
-import { Container } from 'typedi';
-import { InternalHooks } from './InternalHooks';
+import { InternalHooks } from '@/InternalHooks';
+import { PermissionService } from '@/services/permission.service';
 
 export class WorkflowRunner {
 	activeExecutions: ActiveExecutions;
@@ -294,7 +294,7 @@ export class WorkflowRunner {
 			);
 
 			try {
-				await PermissionChecker.check(workflow, data.userId);
+				await Container.get(PermissionService).check(workflow, data.userId);
 			} catch (error) {
 				ErrorReporter.error(error);
 				// Create a failed execution with the data for the node

@@ -15,6 +15,7 @@ import type {
 } from 'n8n-workflow';
 import { LoggerProxy, jsonStringify } from 'n8n-workflow';
 import { resolve as pathResolve } from 'path';
+import { Container } from 'typedi';
 
 import * as Db from '@/Db';
 import * as ResponseHelper from '@/ResponseHelper';
@@ -29,8 +30,7 @@ import { getLogger } from '@/Logger';
 import type { OAuthRequest } from '@/requests';
 import { ExternalHooks } from '@/ExternalHooks';
 import config from '@/config';
-import { getInstanceBaseUrl } from '@/UserManagement/UserManagementHelper';
-import { Container } from 'typedi';
+import { URLService } from '@/services/url.service';
 
 export const oauth2CredentialController = express.Router();
 
@@ -125,7 +125,9 @@ oauth2CredentialController.get(
 			clientSecret: get(oauthCredentials, 'clientSecret', '') as string,
 			accessTokenUri: get(oauthCredentials, 'accessTokenUrl', '') as string,
 			authorizationUri: get(oauthCredentials, 'authUrl', '') as string,
-			redirectUri: `${getInstanceBaseUrl()}/${restEndpoint}/oauth2-credential/callback`,
+			redirectUri: `${
+				Container.get(URLService).instanceBaseUrl
+			}/${restEndpoint}/oauth2-credential/callback`,
 			scopes: split(get(oauthCredentials, 'scope', 'openid,') as string, ','),
 			state: stateEncodedStr,
 		};
@@ -258,7 +260,7 @@ oauth2CredentialController.get(
 				clientSecret: get(oauthCredentials, 'clientSecret', '') as string,
 				accessTokenUri: get(oauthCredentials, 'accessTokenUrl', '') as string,
 				authorizationUri: get(oauthCredentials, 'authUrl', '') as string,
-				redirectUri: `${getInstanceBaseUrl()}/${restEndpoint}/oauth2-credential/callback`,
+				redirectUri: `${Container.get(URLService).instanceBaseUrl}/oauth2-credential/callback`,
 				scopes: split(get(oauthCredentials, 'scope', 'openid,') as string, ','),
 			};
 

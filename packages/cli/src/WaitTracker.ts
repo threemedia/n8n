@@ -23,8 +23,8 @@ import type {
 	IWorkflowExecutionDataProcess,
 } from '@/Interfaces';
 import { WorkflowRunner } from '@/WorkflowRunner';
-import { getWorkflowOwner } from '@/UserManagement/UserManagementHelper';
 import { recoverExecutionDataFromEventLogMessages } from './eventbus/MessageEventBus/recoverEvents';
+import { UserService } from '@/services/user.service';
 
 @Service()
 export class WaitTracker {
@@ -37,7 +37,7 @@ export class WaitTracker {
 
 	mainTimer: NodeJS.Timeout;
 
-	constructor() {
+	constructor(private readonly userService: UserService) {
 		// Poll every 60 seconds a list of upcoming executions
 		this.mainTimer = setInterval(() => {
 			void this.getWaitingExecutions();
@@ -183,7 +183,7 @@ export class WaitTracker {
 			if (!fullExecutionData.workflowData.id) {
 				throw new Error('Only saved workflows can be resumed.');
 			}
-			const user = await getWorkflowOwner(fullExecutionData.workflowData.id);
+			const user = await this.userService.getWorkflowOwner(fullExecutionData.workflowData.id);
 
 			const data: IWorkflowExecutionDataProcess = {
 				executionMode: fullExecutionData.mode,

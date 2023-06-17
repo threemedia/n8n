@@ -1,4 +1,10 @@
+import { Service } from 'typedi';
+import express from 'express';
+import type { PullResult, PushResult, StatusResult } from 'simple-git';
+
 import { Authorized, Get, Post, Patch, RestController } from '@/decorators';
+import { AuthenticatedRequest } from '@/requests';
+import { BadRequestError } from '@/ResponseHelper';
 import {
 	versionControlLicensedMiddleware,
 	versionControlLicensedAndEnabledMiddleware,
@@ -6,16 +12,13 @@ import {
 import { VersionControlService } from './versionControl.service.ee';
 import { VersionControlRequest } from './types/requests';
 import type { VersionControlPreferences } from './types/versionControlPreferences';
-import { BadRequestError } from '@/ResponseHelper';
-import type { PullResult, PushResult, StatusResult } from 'simple-git';
-import { AuthenticatedRequest } from '../../requests';
-import express from 'express';
 import type { ImportResult } from './types/importResult';
 import type { VersionControlPushWorkFolder } from './types/versionControlPushWorkFolder';
 import { VersionControlPreferencesService } from './versionControlPreferences.service.ee';
 import type { VersionControlledFile } from './types/versionControlledFile';
 import { VERSION_CONTROL_API_ROOT, VERSION_CONTROL_DEFAULT_BRANCH } from './constants';
 
+@Service()
 @RestController(`/${VERSION_CONTROL_API_ROOT}`)
 export class VersionControlController {
 	constructor(

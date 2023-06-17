@@ -57,7 +57,6 @@ import type {
 	VariablesRepository,
 	WebhookRepository,
 	WorkflowRepository,
-	WorkflowStatisticsRepository,
 	WorkflowTagMappingRepository,
 } from '@db/repositories';
 
@@ -102,7 +101,6 @@ export interface IDatabaseCollections extends Record<string, Repository<any>> {
 	Variables: VariablesRepository;
 	Webhook: WebhookRepository;
 	Workflow: WorkflowRepository;
-	WorkflowStatistics: WorkflowStatisticsRepository;
 	WorkflowTagMapping: WorkflowTagMappingRepository;
 }
 /* eslint-enable @typescript-eslint/naming-convention */
@@ -667,22 +665,8 @@ export interface IWorkflowExecuteProcess {
 	workflowExecute: WorkflowExecute;
 }
 
-export interface IWorkflowStatisticsCounts {
-	productionSuccess: number;
-	productionError: number;
-	manualSuccess: number;
-	manualError: number;
-}
-
 export interface IWorkflowStatisticsDataLoaded {
 	dataLoaded: boolean;
-}
-
-export interface IWorkflowStatisticsTimestamps {
-	productionSuccess: Date | null;
-	productionError: Date | null;
-	manualSuccess: Date | null;
-	manualError: Date | null;
 }
 
 export type WhereClause = Record<string, { [key: string]: string | FindOperator<unknown> }>;
