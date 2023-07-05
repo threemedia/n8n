@@ -5,8 +5,7 @@ on:
     types:
       - closed
     branches:
-      - 'release/patch'
-      - 'release/minor'
+      - 'release/*'
 
 jobs:
   publish-release:
@@ -46,6 +45,7 @@ jobs:
           tag: '${{ github.repository_owner }}@${{env.RELEASE}}'
           prerelease: true
           makeLatest: false
+          body: ${{github.event.pull_request.body}}
 
       # - name: Merge Release into 'master'
       #   run: |
