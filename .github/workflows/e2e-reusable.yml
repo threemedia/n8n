@@ -78,7 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          repository: n8n-io/n8n
+          repository: threemedia/n8n
           ref: ${{ inputs.branch }}
 
       - name: Checkout PR
@@ -128,7 +128,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          repository: n8n-io/n8n
+          repository: threemedia/n8n
           ref: ${{ inputs.branch }}
 
       - name: Checkout PR
