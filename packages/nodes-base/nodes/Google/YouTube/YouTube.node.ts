@@ -510,7 +510,9 @@ export class YouTube implements INodeType {
 
 						if (options.tags) {
 							//@ts-ignore
-							body.snippet.tags = (options.tags as string).split(',');
+							body.snippet.tags = Array.isArray(options.tags)
+								? options.tags
+								: (options.tags as string).split(',');
 						}
 
 						if (options.description) {
